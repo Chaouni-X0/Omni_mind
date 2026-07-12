@@ -1,0 +1,32 @@
+{
+  "name": "omnimind_node",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^22.0.0",
+    "@types/sqlite3": "^5.1.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@google/genai": "^2.11.0",
+    "axios": "^1.18.1",
+    "crypto-js": "^4.2.0",
+    "diff": "^9.0.0",
+    "dotenv": "^17.4.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "telegraf": "^4.16.3"
+  }
+}
