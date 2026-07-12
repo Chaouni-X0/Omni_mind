@@ -1424,6 +1424,12 @@ async function main() {
                 webhookRegistered = true;
                 const webhookUrl = `${detectedBaseUrl}/api/telegram-webhook`;
                 console.log(`📡 Dynamically setting Telegram Webhook to: ${webhookUrl}`);
+                
+                try {
+                    bot.stop();
+                    console.log('🛑 Active bot polling stopped to transition to webhook mode.');
+                } catch (stopErr) {}
+
                 bot.telegram.setWebhook(webhookUrl)
                     .then(() => console.log('✅ Telegram Webhook registered dynamically!'))
                     .catch(err => {
