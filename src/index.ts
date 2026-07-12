@@ -1411,13 +1411,39 @@ async function main() {
         allowHeaders: ['Content-Type', 'Authorization']
     }));
 
+    let webhookRegistered = false;
+
     app.use('/*', async (c, next) => {
         try {
             const urlObj = new URL(c.req.url);
             const detectedBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
             process.env.APP_URL = detectedBaseUrl;
+
+            // Dynamically register Telegram webhook if we detect a public APP_URL
+            if (!webhookRegistered && detectedBaseUrl && !detectedBaseUrl.includes('localhost') && !detectedBaseUrl.includes('127.0.0.1')) {
+                webhookRegistered = true;
+                const webhookUrl = `${detectedBaseUrl}/api/telegram-webhook`;
+                console.log(`📡 Dynamically setting Telegram Webhook to: ${webhookUrl}`);
+                bot.telegram.setWebhook(webhookUrl)
+                    .then(() => console.log('✅ Telegram Webhook registered dynamically!'))
+                    .catch(err => {
+                        console.error('❌ Failed to set Telegram Webhook dynamically:', err.message);
+                        webhookRegistered = false; // reset to allow retry
+                    });
+            }
         } catch (e) {}
         await next();
+    });
+
+    app.post('/api/telegram-webhook', async (c) => {
+        try {
+            const update = await c.req.json();
+            await bot.handleUpdate(update);
+            return c.json({ ok: true });
+        } catch (err: any) {
+            console.error('⚠️ Webhook handler error:', err.message);
+            return c.json({ ok: false, error: err.message }, 500);
+        }
     });
 
     app.get('/api/download/:uniqueId/:filename', async (c) => {
@@ -1589,10 +1615,30 @@ async function main() {
         console.log(`📡 Hono Web server listening on http://0.0.0.0:${info.port}`);
     });
 
-    console.log("🤖 جاري تشغيل بوت التليغرام الأسطوري...");
-    bot.launch().catch(err => {
-        console.error("⚠️ Failed to launch Telegram bot (token might be missing/invalid), but health check server is running:", err.message);
-    });
+    const initialAppUrl = process.env.APP_URL;
+    let useWebhook = false;
+
+    if (initialAppUrl && !initialAppUrl.includes('localhost') && !initialAppUrl.includes('127.0.0.1')) {
+        useWebhook = true;
+        webhookRegistered = true;
+        const webhookUrl = `${initialAppUrl}/api/telegram-webhook`;
+        console.log(`📡 Setting Telegram webhook on startup to: ${webhookUrl}`);
+        bot.telegram.setWebhook(webhookUrl)
+            .then(() => console.log('✅ Telegram Webhook registered on startup!'))
+            .catch(err => {
+                console.error('❌ Failed to set Telegram Webhook on startup:', err.message);
+                webhookRegistered = false;
+            });
+    }
+
+    if (!useWebhook) {
+        console.log("🤖 جاري تشغيل بوت التليغرام الأسطوري عبر Polling...");
+        bot.launch().catch(err => {
+            console.error("⚠️ Failed to launch Telegram bot (token might be missing/invalid), but health check server is running:", err.message);
+        });
+    } else {
+        console.log("🤖 Telegram bot configured to run via WEBHOOK mode. Polling skipped to prevent 409 Conflict.");
+    }
 
     process.once('SIGINT', () => {
         bot.stop('SIGINT');
