@@ -2,7 +2,18 @@
 .env
 *.env
 
+# Dependency directories
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build outputs
+dist/
+build/
+out/
+
 # Database
+bot.db
 data/*.db
 data/temp_storage/
 
@@ -28,3 +39,7 @@ Thumbs.db
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
