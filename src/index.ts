@@ -1622,7 +1622,8 @@ async function main() {
     });
 
     const initialAppUrl = process.env.APP_URL;
-    let useWebhook = false;
+    const isProduction = process.env.NODE_ENV === 'production' || !!process.env.K_SERVICE;
+    let useWebhook = isProduction;
 
     if (initialAppUrl && !initialAppUrl.includes('localhost') && !initialAppUrl.includes('127.0.0.1')) {
         useWebhook = true;
@@ -1635,10 +1636,12 @@ async function main() {
                 console.error('❌ Failed to set Telegram Webhook on startup:', err.message);
                 webhookRegistered = false;
             });
+    } else if (isProduction) {
+        console.log("📡 Running in Production/Cloud Run mode. Webhook will be registered dynamically upon the first HTTP request to prevent 409 Conflict.");
     }
 
     if (!useWebhook) {
-        console.log("🤖 جاري تشغيل بوت التليغرام الأسطوري عبر Polling...");
+        console.log("🤖 [LOCAL] جاري تشغيل بوت التليغرام الأسطوري عبر Polling...");
         bot.launch().catch(err => {
             console.error("⚠️ Failed to launch Telegram bot (token might be missing/invalid), but health check server is running:", err.message);
         });
