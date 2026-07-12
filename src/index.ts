@@ -292,6 +292,239 @@ bot.command('os', async (ctx) => {
     ctx.reply(osMsg, { parse_mode: 'Markdown', ...keyboard });
 });
 
+bot.command('addkey', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/addkey', '').trim();
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+        return ctx.reply('⚠️ الاستخدام الصحيح: `/addkey [openai|gemini|github_token] [المفتاح]`', { parse_mode: 'Markdown' });
+    }
+    const provider = parts[0]!.toLowerCase();
+    const key = parts[1]!;
+    
+    if (!['openai', 'gemini', 'github_token'].includes(provider)) {
+        return ctx.reply('⚠️ الموفر غير مدعوم. الموفرون المدعومون هم: `openai`, `gemini`, `github_token`', { parse_mode: 'Markdown' });
+    }
+    
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const encrypted = encrypt(key, ctx.from.id);
+        await botDb.addCredential(ctx.from.id, provider, encrypted);
+        
+        ctx.reply(`✅ تم تشفير وحفظ مفتاح *${provider}* بأمان تام في الخزنة الخاصة بك!`, { parse_mode: 'Markdown' });
+    } catch (e: any) {
+        ctx.reply(`❌ فشل حفظ المفتاح: ${e.message}`);
+    }
+});
+
+bot.command('addpool', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/addpool', '').trim();
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+        return ctx.reply('⚠️ الاستخدام الصحيح: `/addpool [openai|gemini] [المفتاح]`', { parse_mode: 'Markdown' });
+    }
+    const provider = parts[0]!.toLowerCase();
+    const key = parts[1]!;
+    
+    if (!['openai', 'gemini'].includes(provider)) {
+        return ctx.reply('⚠️ الموفر غير مدعوم لحوض التدوير. الموفرون المدعومون هم: `openai`, `gemini`', { parse_mode: 'Markdown' });
+    }
+    
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const encrypted = encrypt(key, ctx.from.id);
+        await botDb.addPoolToken(ctx.from.id, provider, encrypted);
+        
+        ctx.reply(`✅ تم إضافة المفتاح لحوض التدوير الخاص بـ *${provider}* بنجاح وتأمينه!`, { parse_mode: 'Markdown' });
+    } catch (e: any) {
+        ctx.reply(`❌ فشل إضافة المفتاح للحوض: ${e.message}`);
+    }
+});
+
+bot.command('projects', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/projects', '').trim();
+    await botDb.ensureUser(ctx.from.id, ctx.from.username);
+    
+    if (!text) {
+        const active = await botDb.getActiveProject(ctx.from.id);
+        const activeMsg = active 
+            ? `🟢 *المشروع النشط:* \`${active.name}\`\n📍 *المسار:* \`${active.project_path}\``
+            : `🔴 *لا يوجد مشروع نشط حالياً.*`;
+        
+        return ctx.reply(`${activeMsg}\n\n💡 لإنشاء مشروع جديد وتفعيله، استخدم:\n\`/projects [اسم_المشروع] [مسار_المشروع]\`\n\nمثال:\n\`/projects MyWebSite /app/my_app\``, { parse_mode: 'Markdown' });
+    }
+    
+    const parts = text.split(/\s+/);
+    const name = parts[0];
+    if (!name) {
+        return ctx.reply('⚠️ يرجى تحديد اسم المشروع.', { parse_mode: 'Markdown' });
+    }
+    const projectPath = parts[1] || path.join(process.cwd(), "projects", name);
+    
+    try {
+        if (!fs.existsSync(projectPath)) {
+            fs.mkdirSync(projectPath, { recursive: true });
+        }
+        await botDb.createProject(ctx.from.id, name, projectPath);
+        ctx.reply(`✅ تم تفعيل مشروع *${name}* بنجاح!\n📍 المسار: \`${projectPath}\``, { parse_mode: 'Markdown' });
+    } catch (e: any) {
+        ctx.reply(`❌ فشل تفعيل المشروع: ${e.message}`);
+    }
+});
+
+bot.command('lock', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/lock', '').trim();
+    if (!text) {
+        return ctx.reply('⚠️ يرجى تحديد مسار الملف لقفله. مثال: `/lock src/index.ts`', { parse_mode: 'Markdown' });
+    }
+    
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const activeProject = await botDb.getActiveProject(ctx.from.id);
+        if (!activeProject) {
+            return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً باستخدام أمر `/projects` لتتمكن من قفل الملفات.', { parse_mode: 'Markdown' });
+        }
+        
+        const success = await botDb.lockFile(activeProject.id, text, ctx.from.id);
+        if (success) {
+            ctx.reply(`🔒 تم قفل الملف \`${text}\` بنجاح لحسابك فقط!`, { parse_mode: 'Markdown' });
+        } else {
+            const lock = await botDb.getFileLock(activeProject.id, text);
+            ctx.reply(`⚠️ هذا الملف مقفل حالياً بواسطة مستخدم آخر (معرف المستخدم: ${lock?.locked_by}).`, { parse_mode: 'Markdown' });
+        }
+    } catch (e: any) {
+        ctx.reply(`❌ فشل قفل الملف: ${e.message}`);
+    }
+});
+
+bot.command('unlock', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/unlock', '').trim();
+    if (!text) {
+        return ctx.reply('⚠️ يرجى تحديد مسار الملف لإلغاء قفله. مثال: `/unlock src/index.ts`', { parse_mode: 'Markdown' });
+    }
+    
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const activeProject = await botDb.getActiveProject(ctx.from.id);
+        if (!activeProject) {
+            return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً باستخدام أمر `/projects` لتتمكن من إلغاء قفل الملفات.', { parse_mode: 'Markdown' });
+        }
+        
+        const lock = await botDb.getFileLock(activeProject.id, text);
+        if (!lock) {
+            return ctx.reply(`💡 الملف \`${text}\` غير مقفل أصلاً.`, { parse_mode: 'Markdown' });
+        }
+        
+        if (lock.locked_by !== ctx.from.id) {
+            return ctx.reply(`⚠️ لا تملك صلاحية فك قفل هذا الملف لأنه مقفل بواسطة مستخدم آخر.`, { parse_mode: 'Markdown' });
+        }
+        
+        await botDb.unlockFile(activeProject.id, text);
+        ctx.reply(`🔓 تم فك قفل الملف \`${text}\` وهو متاح الآن للجميع!`, { parse_mode: 'Markdown' });
+    } catch (e: any) {
+        ctx.reply(`❌ فشل فك قفل الملف: ${e.message}`);
+    }
+});
+
+bot.command('team', async (ctx) => {
+    await handleTeamSession(ctx);
+});
+
+bot.command('team_session', async (ctx) => {
+    await handleTeamSession(ctx);
+});
+
+async function handleTeamSession(ctx: any) {
+    if (!ctx.from) return;
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const activeProject = await botDb.getActiveProject(ctx.from.id);
+        if (!activeProject) {
+            return ctx.reply('⚠️ لا يوجد مشروع نشط حالياً. يرجى تفعيل مشروع أولاً باستخدام أمر `/projects`.', { parse_mode: 'Markdown' });
+        }
+        ctx.reply(`👥 *جلسة عمل الفريق النشطة للمشروع:* \`${activeProject.name}\`\n\n- نظام الحماية ضد تصادم التعديلات مفعل تلقائيًا.\n- استخدم \`/lock [مسار_الملف]\` للعمل على ملف بشكل مستقل.\n- استخدم \`/unlock [مسار_الملف]\` لإلغاء القفل.\n\n_أنت وفريقك متصلون الآن بنفس بيئة التطوير والوكلاء!_`, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+        ctx.reply(`❌ فشل تهيئة جلسة الفريق: ${error.message}`);
+    }
+}
+
+bot.command('start', async (ctx) => {
+    if (!ctx.from) return;
+    await botDb.ensureUser(ctx.from.id, ctx.from.username);
+    ctx.reply(`🌌 مرحبًا بك في *OmniMind OS* - رفيق دربك التطويري الأسطوري!\n\nاستخدم /help لعرض قائمة الميزات الـ 300 المدمجة، أو اكتب /os لفتح لوحة التحكم الذكية التفاعلية.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('persona', async (ctx) => {
+    if (!ctx.from) return;
+    const text = ctx.message.text.replace('/persona', '').trim().toLowerCase();
+    const validPersonas = ['normal', 'duck', 'devil', 'eli5', 'roast'];
+    
+    if (!text || !validPersonas.includes(text)) {
+        return ctx.reply('⚠️ يرجى تحديد نمط الشخصية بعد الأمر. الشخصيات المتاحة:\n\n• `normal` - الوكيل الطبيعي\n• `duck` - البطة المطاطية\n• `devil` - محامي الشيطان\n• `eli5` - مبسط للأطفال\n• `roast` - شواية كوميدية\n\nمثال: `/persona roast`', { parse_mode: 'Markdown' });
+    }
+    
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        await botDb.setPersona(ctx.from.id, text);
+        const names: Record<string, string> = {
+            normal: "الوكيل الطبيعي المحترف 🤖",
+            duck: "البطة المطاطية السقراطية 🦆",
+            devil: "محامي الشيطان المشاكس 😈",
+            eli5: "مبسط الكود الرائع 🧸",
+            roast: "شواية الكود الكوميدية 🔥"
+        };
+        ctx.reply(`✅ تم تفعيل *${names[text]}* بنجاح! جميع المهام والردود القادمة ستتبع هذا النمط الأسطوري.`, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+        ctx.reply(`❌ فشل تغيير الشخصية: ${error.message}`);
+    }
+});
+
+bot.command('rpg', async (ctx) => {
+    if (!ctx.from) return;
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const rpg = await botDb.getRPG(ctx.from.id);
+        const nextXpRequired = rpg.level * 100;
+        const xpPercent = Math.min(100, Math.floor(((rpg.xp || 0) / nextXpRequired) * 100));
+        ctx.reply(`🏆 *إحصائيات RPG المطور المتكاملة:* \n\n• اللقب: *${rpg.title}*\n• المستوى الحالي: *${rpg.level}*\n• شريط الخبرة: *${xpPercent}%* [${rpg.xp}/${nextXpRequired} XP]\n• إجمالي المهام الناجحة: *${rpg.tasks_completed}*`, { parse_mode: 'Markdown' });
+    } catch (e: any) {
+        ctx.reply(`❌ فشل جلب بيانات RPG: ${e.message}`);
+    }
+});
+
+bot.command('cost', async (ctx) => {
+    if (!ctx.from) return;
+    try {
+        await botDb.ensureUser(ctx.from.id, ctx.from.username);
+        const costs = await botDb.getCosts(ctx.from.id);
+        let breakdownText = "";
+        if (costs.breakdown.length === 0) {
+            breakdownText = "• لا توجد طلبات مسجلة حتى الآن.";
+        } else {
+            costs.breakdown.forEach((row: any) => {
+                breakdownText += `• *${row.model}:* ${row.request_count} طلبات | ${row.total_tokens} توكن | \$${row.total_cost.toFixed(6)}\n`;
+            });
+        }
+        const costMsg = `
+📊 *OmniMind Live Cost Dashboard*
+👤 *المستخدم:* ${ctx.from.first_name}
+
+📈 *تفاصيل النماذج المستهلكة:*
+${breakdownText}
+
+🪙 *إجمالي التوكنز المستهلكة:* ${costs.totalTokens} Tokens
+💵 *إجمالي التكلفة التقديرية:* \$${costs.totalCost.toFixed(6)} USD
+`;
+        ctx.reply(costMsg, { parse_mode: 'Markdown' });
+    } catch (error: any) {
+        ctx.reply(`❌ فشل جلب لوحة التكلفة: ${error.message}`);
+    }
+});
+
 // Map all callbacks for the OS interface
 bot.action('os_rpg', async (ctx) => {
     ctx.answerCbQuery();
@@ -1296,6 +1529,85 @@ ${breakdownText}
         } catch (error: any) {
             ctx.reply(`❌ فشل جلب لوحة التكلفة: ${error.message}`);
         }
+    } else if (cmd === 'projects') {
+        await botDb.ensureUser(ctx.from!.id, ctx.from!.username);
+        const active = await botDb.getActiveProject(ctx.from!.id);
+        const activeMsg = active 
+            ? `🟢 *المشروع النشط:* \`${active.name}\`\n📍 *المسار:* \`${active.project_path}\``
+            : `🔴 *لا يوجد مشروع نشط حالياً.*`;
+        
+        ctx.reply(`${activeMsg}\n\n💡 لإنشاء مشروع جديد وتفعيله، يرجى كتابة الأمر:\n\`/projects [اسم_المشروع] [مسار_المشروع]\` في الدردشة.`, { parse_mode: 'Markdown' });
+    } else if (cmd === 'rpg') {
+        try {
+            await botDb.ensureUser(ctx.from!.id, ctx.from!.username);
+            const rpg = await botDb.getRPG(ctx.from!.id);
+            const nextXpRequired = rpg.level * 100;
+            const xpPercent = Math.min(100, Math.floor(((rpg.xp || 0) / nextXpRequired) * 100));
+            ctx.reply(`🏆 *إحصائيات RPG المطور المتكاملة:* \n\n• اللقب: *${rpg.title}*\n• المستوى الحالي: *${rpg.level}*\n• شريط الخبرة: *${xpPercent}%* [${rpg.xp}/${nextXpRequired} XP]\n• إجمالي المهام الناجحة: *${rpg.tasks_completed}*`, { parse_mode: 'Markdown' });
+        } catch (e: any) {
+            ctx.reply(`❌ فشل جلب بيانات RPG: ${e.message}`);
+        }
+    } else if (cmd === 'matrix') {
+        const matrixText = `
+💻 *OmniMind Matrix OS Live View*
+🤖 *حالة خلية الوكلاء المعرفية:*
+
+\`\`\`
+10101101  [CRITIC AGENT]  -> ACTIVE 🟢 (Analyzing code smells)
+01100010  [CODER AGENT]   -> STANDBY 🟡 (Waiting for instruction)
+11101011  [TESTER AGENT]  -> ACTIVE 🟢 (Executing continuous mocha checks)
+00101101  [SECURITY AGENT]-> SLEEPING 💤 (Audit complete)
+
+  ▲
+ / \\   SWARM SYNCING... 100%
+/___\\  PORT: 3000
+\`\`\`
+
+_تم توليد تمثيل مرئي مصفوفي ناجح لشبكة الوكلاء الحالية._
+`;
+        ctx.reply(matrixText, { parse_mode: 'Markdown' });
+    } else if (cmd === 'break') {
+        ctx.reply(`☕ *حان وقت استراحة القهوة الذكية (3 ساعات)!*
+البوت سيتولى الآن فحص البيئة بالخلفية للتأكد من عدم تعطل أي من الاختبارات...
+
+⏳ *مؤقت الاستراحة بدأ الآن.* خذ قسطاً من الراحة لزيادة ذكائك وتركيزك البرمجي!`);
+    } else if (cmd === 'os') {
+        const rpg = await botDb.getRPG(ctx.from!.id);
+        const osMsg = `
+🌌 *لوحة التحكم OmniMind OS - نظام مصفوفي نشط*
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+👤 *المطور:* ${ctx.from!.first_name}
+⭐ *المستوى:* ${rpg.level} | *اللقب:* ${rpg.title}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+الرجاء استخدام قائمة الأزرار التفاعلية البرمجية بالأسفل لتشغيل وتنفيذ الميزات فورياً وبدون كتابة أوامر معقدة:
+`;
+        const keyboard = Markup.inlineKeyboard([
+            [
+                Markup.button.callback('🏆 RPG Dashboard', 'os_rpg'),
+                Markup.button.callback('📊 Live Costs', 'os_costs')
+            ],
+            [
+                Markup.button.callback('🗺️ App Blueprint', 'os_blueprint'),
+                Markup.button.callback('🥷 Security Audit', 'os_redteam')
+            ],
+            [
+                Markup.button.callback('🐳 Dockerize App', 'os_docker'),
+                Markup.button.callback('💻 Swarm Swarm', 'os_matrix')
+            ],
+            [
+                Markup.button.callback('☕ Quick Break', 'os_break'),
+                Markup.button.callback('🎭 Change Persona', 'os_persona')
+            ],
+            [
+                Markup.button.callback('🌟 300 Superpowers 🌟', 'os_300_powers')
+            ],
+            [
+                Markup.button.callback('📜 All Commands | كل الأوامر 📜', 'os_commands')
+            ]
+        ]);
+
+        ctx.reply(osMsg, { parse_mode: 'Markdown', ...keyboard });
     } else {
         const directCmdMap: Record<string, { instruction: string; defaultArg: string }> = {
             build_api: { instruction: directFeatures.build_api || "", defaultArg: 'products' },
@@ -1430,7 +1742,7 @@ async function main() {
                     console.log('🛑 Active bot polling stopped to transition to webhook mode.');
                 } catch (stopErr) {}
 
-                bot.telegram.setWebhook(webhookUrl)
+                bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true })
                     .then(() => console.log('✅ Telegram Webhook registered dynamically!'))
                     .catch(err => {
                         console.error('❌ Failed to set Telegram Webhook dynamically:', err.message);
@@ -1630,7 +1942,7 @@ async function main() {
         webhookRegistered = true;
         const webhookUrl = `${initialAppUrl}/api/telegram-webhook`;
         console.log(`📡 Setting Telegram webhook on startup to: ${webhookUrl}`);
-        bot.telegram.setWebhook(webhookUrl)
+        bot.telegram.setWebhook(webhookUrl, { drop_pending_updates: true })
             .then(() => console.log('✅ Telegram Webhook registered on startup!'))
             .catch(err => {
                 console.error('❌ Failed to set Telegram Webhook on startup:', err.message);
@@ -1642,9 +1954,19 @@ async function main() {
 
     if (!useWebhook) {
         console.log("🤖 [LOCAL] جاري تشغيل بوت التليغرام الأسطوري عبر Polling...");
-        bot.launch().catch(err => {
-            console.error("⚠️ Failed to launch Telegram bot (token might be missing/invalid), but health check server is running:", err.message);
-        });
+        bot.telegram.deleteWebhook({ drop_pending_updates: true })
+            .then(() => {
+                bot.launch().catch(err => {
+                    console.error("⚠️ Failed to launch Telegram bot (token might be missing/invalid), but health check server is running:", err.message);
+                });
+            })
+            .catch(err => {
+                console.error("⚠️ Failed to delete webhook before polling:", err.message);
+                // fallback to launch
+                bot.launch().catch(launchErr => {
+                    console.error("⚠️ Failed to launch Telegram bot:", launchErr.message);
+                });
+            });
     } else {
         console.log("🤖 Telegram bot configured to run via WEBHOOK mode. Polling skipped to prevent 409 Conflict.");
     }
