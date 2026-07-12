@@ -219,14 +219,12 @@ DO NOT wrap your response in markdown code blocks or add any comments unless the
                     const repairPrompt = `File Path: ${relPath}\n\nUser Goal:\n${userInstructions}\n\nOriginal Content:\n${originalContent}`;
                     const modifiedContent = await this.agent.runCustom(repairSystemPrompt, repairPrompt, userId);
                     
-                    let cleanedContent = modifiedContent;
-                    // Sometimes models still use code blocks, strip them if present
-                    if (cleanedContent.startsWith('```')) {
-                        const firstLineEnd = cleanedContent.indexOf('\n');
-                        cleanedContent = cleanedContent.slice(firstLineEnd + 1);
-                    }
-                    if (cleanedContent.endsWith('```')) {
-                        cleanedContent = cleanedContent.slice(0, -3);
+                    let cleanedContent = modifiedContent.trim();
+                    const codeBlockMatch = cleanedContent.match(/^```[a-zA-Z]*\r?\n([\s\S]*?)\r?\n```$/);
+                    if (codeBlockMatch) {
+                        cleanedContent = codeBlockMatch[1] || '';
+                    } else {
+                        cleanedContent = cleanedContent.replace(/^```[a-zA-Z]*\r?\n/, '').replace(/\r?\n```$/, '');
                     }
 
                     fs.writeFileSync(targetFile.fullPath, cleanedContent, 'utf8');
@@ -257,13 +255,12 @@ DO NOT wrap your response in markdown code blocks. Output ONLY the raw contents 
                     const createPrompt = `File to create: ${relPath}\n\nUser Goal:\n${userInstructions}`;
                     const generatedContent = await this.agent.runCustom(createSystemPrompt, createPrompt, userId);
 
-                    let cleanedContent = generatedContent;
-                    if (cleanedContent.startsWith('```')) {
-                        const firstLineEnd = cleanedContent.indexOf('\n');
-                        cleanedContent = cleanedContent.slice(firstLineEnd + 1);
-                    }
-                    if (cleanedContent.endsWith('```')) {
-                        cleanedContent = cleanedContent.slice(0, -3);
+                    let cleanedContent = generatedContent.trim();
+                    const codeBlockMatch = cleanedContent.match(/^```[a-zA-Z]*\r?\n([\s\S]*?)\r?\n```$/);
+                    if (codeBlockMatch) {
+                        cleanedContent = codeBlockMatch[1] || '';
+                    } else {
+                        cleanedContent = cleanedContent.replace(/^```[a-zA-Z]*\r?\n/, '').replace(/\r?\n```$/, '');
                     }
 
                     fs.writeFileSync(fullPath, cleanedContent, 'utf8');
