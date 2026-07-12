@@ -12,6 +12,7 @@ import { encrypt } from './vault/crypto';
 import { executeShell } from './utils/toolExecutor';
 import { ALL_300_FEATURES } from './features/allFeatures';
 import { ALL_IMPLEMENTED_FEATURES } from './features/superpowers';
+import { zipRepairManager } from './utils/zipRepairManager';
 
 dotenv.config();
 
@@ -380,11 +381,93 @@ Object.entries(directFeatures).forEach(([cmd, systemInstruction]) => {
     });
 });
 
+async function handleZipRepairFlow(ctx: any, fileUrl: string, originalFilename: string, instructions: string) {
+    const statusMsg = await ctx.reply('🚀 <b>جاري تهيئة معالج المشاريع المتقدم (OmniMind ZIP Unpack Engine)...</b>', { parse_mode: 'HTML' });
+    
+    const progress = {
+        updateMessage: async (text: string) => {
+            try {
+                await ctx.telegram.editMessageText(ctx.chat.id, statusMsg.message_id, undefined, text, { parse_mode: 'HTML' });
+            } catch (e) {
+                console.error("Progress update failed:", e);
+            }
+        }
+    };
+
+    try {
+        const userId = ctx.from.id;
+        const result = await zipRepairManager.processZipRepair(fileUrl, instructions, userId, originalFilename, progress);
+
+        const filesListText = result.filesChanged.map(f => `• <code>${f}</code>`).join('\n');
+        const successMsg = `
+✨ <b>تم إصلاح وتحديث مشروعك بنجاح!</b> 🎉
+━━━━━━━━━━━━━━━━━━━━━━━━━
+📝 <b>تقرير التحليل الذكي للوكيل:</b>
+${result.analysis}
+
+🛠️ <b>الملفات التي تم تعديلها/إنشاؤها (${result.filesChanged.length}):</b>
+${filesListText || '• لم يتم تغيير أي ملفات.'}
+
+📥 <b>رابط التحميل المباشر عالي السرعة (يدعم حتى 100MB+):</b>
+👉 <a href="${result.downloadUrl}">اضغط هنا لتحميل المشروع المصلح</a>
+━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 <i>ملاحظة: يمكنك استخدام هذا الملف المضغوط ورفعه إلى GitHub مباشرة.</i>
+`;
+        await progress.updateMessage(successMsg);
+
+        try {
+            const stats = fs.statSync(result.localPath);
+            if (stats.size <= 50 * 1024 * 1024) {
+                await ctx.replyWithDocument({ source: result.localPath, filename: path.basename(result.localPath) }, {
+                    caption: `📦 مشروعك المصلح: ${path.basename(result.localPath)}`
+                });
+            }
+        } catch (tgSendErr: any) {
+            console.error("Failed to send zip directly via Telegram:", tgSendErr.message);
+        }
+
+    } catch (error: any) {
+        await progress.updateMessage(`❌ <b>فشل إصلاح المشروع:</b>\n<code>${error.message}</code>\n\nيرجى التحقق من ملف الـ ZIP والمحاولة مرة أخرى!`);
+    }
+}
+
+bot.on('document', async (ctx) => {
+    const doc = ctx.message.document;
+    const filename = doc.file_name || 'project.zip';
+    
+    if (filename.toLowerCase().endsWith('.zip') || doc.mime_type === 'application/zip') {
+        const caption = ctx.message.caption || "أصلح الأخطاء وحسن جودة الكود والمستندات";
+        try {
+            const fileLink = await ctx.telegram.getFileLink(doc.file_id);
+            await handleZipRepairFlow(ctx, fileLink.href, filename, caption);
+        } catch (err: any) {
+            ctx.reply(`⚠️ فشل تحميل الملف من تيليغرام: ${err.message}\n\n<i>تنويه: لدى تيليغرام حد أقصى لتحميل الملفات المباشرة للبوتات (20 ميغابايت). إذا كان حجم مشروعك أكبر من 20 ميغابايت، يرجى رفعه على Google Drive أو Dropbox وإرسال الرابط المباشر للملف المضغوط هنا (مثال: <code>http://domain.com/project.zip</code>) وسنقوم بتحميله وإصلاحه فوراً!</i>`, { parse_mode: 'HTML' });
+        }
+    } else {
+        ctx.reply('⚠️ يرجى رفع ملف مضغوط بصيغة <code>.zip</code> فقط ليتمكن وكيل OmniMind من تفكيكه وإصلاحه وإعادة إرساله لك.', { parse_mode: 'HTML' });
+    }
+});
+
 // Handle general incoming text messages that are not commands
 bot.on('text', async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith('/')) {
         return; // Ignore if it looks like a command but wasn't registered
+    }
+
+    const zipUrlPattern = /(https?:\/\/[^\s]+?\.zip(?:\?[^\s]*)?)/i;
+    const hasZipUrl = text.match(zipUrlPattern);
+    if (hasZipUrl && hasZipUrl[1]) {
+        const url = hasZipUrl[1];
+        const instructions = text.replace(url, '').trim() || "أصلح الأخطاء وحسن الكود والمستندات";
+        let originalFilename = 'project.zip';
+        try {
+            originalFilename = path.basename(new URL(url).pathname) || 'project.zip';
+            if (!originalFilename.endsWith('.zip')) {
+                originalFilename += '.zip';
+            }
+        } catch (e) {}
+        return await handleZipRepairFlow(ctx, url, originalFilename, instructions);
     }
 
     ctx.reply('🔄 جاري التفكير وتحليل رسالتك من قبل وكيل OmniMind الذكي...');
@@ -1327,6 +1410,31 @@ async function main() {
         allowMethods: ['GET', 'POST', 'OPTIONS'],
         allowHeaders: ['Content-Type', 'Authorization']
     }));
+
+    app.use('/*', async (c, next) => {
+        try {
+            const urlObj = new URL(c.req.url);
+            const detectedBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
+            process.env.APP_URL = detectedBaseUrl;
+        } catch (e) {}
+        await next();
+    });
+
+    app.get('/api/download/:uniqueId/:filename', async (c) => {
+        const { uniqueId, filename } = c.req.param();
+        const decodedFilename = decodeURIComponent(filename);
+        const filePath = path.join(process.cwd(), 'data', 'repaired', uniqueId, decodedFilename);
+        
+        if (!fs.existsSync(filePath)) {
+            return c.text('الملف غير موجود أو انتهت صلاحيته', 404);
+        }
+
+        c.header('Content-Type', 'application/zip');
+        c.header('Content-Disposition', `attachment; filename="${encodeURIComponent(decodedFilename)}"`);
+        
+        const fileBuffer = fs.readFileSync(filePath);
+        return c.body(fileBuffer);
+    });
 
     app.get('/api/dashboard', async (c) => {
         const userIdStr = c.req.query('user_id');

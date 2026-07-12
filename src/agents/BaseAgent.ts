@@ -63,6 +63,12 @@ export class BaseAgent {
         return { name: this.name, content: processedContent };
     }
 
+    async runCustom(systemPrompt: string, prompt: string, userId: number): Promise<string> {
+        const prefs = await botDb.getPreferences(userId);
+        const { provider, model } = this.smartRoute(prompt, prompt, prefs);
+        return await this.callUserAiWithFailover(userId, provider, model, prompt, systemPrompt);
+    }
+
     private composePrompt(systemPrompt: string, task: string, codeContext: string, prior: Record<string, string>, lang: string, toolsDesc: string): string {
         const priorText = Object.entries(prior).map(([k, v]) => `[${k}] ${v}`).join('\n');
         const langInstruction = lang === "ar" ? "Respond in concise Arabic unless code is needed." : "Respond in concise English unless code is needed.";
