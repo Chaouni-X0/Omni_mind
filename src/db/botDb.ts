@@ -154,18 +154,14 @@ export class BotDB {
     }
 
     async setPreferences(userId: number, provider?: string, model?: string, lang?: string, persona?: string) {
-        const current = await this.getPreferences(userId);
-        if (!current) {
-            await this.db?.run(
-                'INSERT INTO preferences (user_id, selected_provider, selected_model, language, selected_persona) VALUES (?, ?, ?, ?, ?)',
-                [userId, provider || null, model || null, lang || 'ar', persona || 'normal']
-            );
-        } else {
-            if (provider) await this.db?.run('UPDATE preferences SET selected_provider = ? WHERE user_id = ?', [provider, userId]);
-            if (model) await this.db?.run('UPDATE preferences SET selected_model = ? WHERE user_id = ?', [model, userId]);
-            if (lang) await this.db?.run('UPDATE preferences SET language = ? WHERE user_id = ?', [lang, userId]);
-            if (persona) await this.db?.run('UPDATE preferences SET selected_persona = ? WHERE user_id = ?', [persona, userId]);
-        }
+        await this.db?.run(
+            'INSERT OR IGNORE INTO preferences (user_id, selected_provider, selected_model, language, selected_persona) VALUES (?, ?, ?, ?, ?)',
+            [userId, provider || null, model || null, lang || 'ar', persona || 'normal']
+        );
+        if (provider) await this.db?.run('UPDATE preferences SET selected_provider = ? WHERE user_id = ?', [provider, userId]);
+        if (model) await this.db?.run('UPDATE preferences SET selected_model = ? WHERE user_id = ?', [model, userId]);
+        if (lang) await this.db?.run('UPDATE preferences SET language = ? WHERE user_id = ?', [lang, userId]);
+        if (persona) await this.db?.run('UPDATE preferences SET selected_persona = ? WHERE user_id = ?', [persona, userId]);
     }
 
     async setPersona(userId: number, persona: string) {
@@ -177,10 +173,10 @@ export class BotDB {
         let rpg = await this.db?.get('SELECT * FROM user_rpg WHERE user_id = ?', [userId]);
         if (!rpg) {
             await this.db?.run(
-                'INSERT INTO user_rpg (user_id, xp, level, title, tasks_completed) VALUES (?, 0, 1, "Junior Ninja", 0)',
+                'INSERT OR IGNORE INTO user_rpg (user_id, xp, level, title, tasks_completed) VALUES (?, 0, 1, "Junior Ninja", 0)',
                 [userId]
             );
-            rpg = { user_id: userId, xp: 0, level: 1, title: 'Junior Ninja', tasks_completed: 0 };
+            rpg = await this.db?.get('SELECT * FROM user_rpg WHERE user_id = ?', [userId]) || { user_id: userId, xp: 0, level: 1, title: 'Junior Ninja', tasks_completed: 0 };
         }
         return rpg;
     }

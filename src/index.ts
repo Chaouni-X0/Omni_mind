@@ -3,6 +3,9 @@ import * as dotenv from 'dotenv';
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { serve } from '@hono/node-server';
 import { botDb } from './db/botDb';
 import { BaseAgent } from './agents/BaseAgent';
 import { encrypt } from './vault/crypto';
@@ -46,306 +49,15 @@ bot.command('help', (ctx) => {
 ⚡ <b>إدارة التوكنات والتكلفة:</b>
 • /addkey [openai|gemini|github_token] [مفتاح] - إضافة مفاتيحك الخاصة مشفرة.
 • /addpool [openai|gemini] [مفتاح] - إضافة توكنات لحوض التدوير التلقائي لتجنب حد الاستهلاك.
-• /cost - لوحة التكلفة الحية (إحصائيات استهلاك التوكنات والـ USD).
+• /cost - لوحة التكلفة الحية (إحصائيات استهلاك التوكنات).
+• /projects - إدارة مشاريع التطوير والمسارات المشتركة.
+• /lock - حماية الملفات من التعديل المشترك.
+• /team - جلسة فريق العمل الموحد.
 
-🏗️ <b>أدوات التطوير المعمقة والمشاريع:</b>
-• /blueprint [فكرة] - كتابة مخطط معماري متكامل (5 مراحل).
-• /build_api [اسم] - توليد كامل لـ API (controllers, schemas, routes, tests).
-• /build_bot [اسم] - توليد بوت تيليغرام Node-Telegraf متكامل.
-• /adr [قرار] - كتابة وتوثيق قرار معماري (ADR).
-• /multiphase [هدف] - تقسيم هدف ضخم وتجربته عبر نقاط تفتيش آلية.
-• /dna - تحليل عميق لمكونات الكود ومستوى الأمان والثغرات.
-
-🥷 <b>أدوات الحماية والتنقيب:</b>
-• /redteam - فحص أمني تفصيلي للملفات (الأمن السيبراني، الثغرات، حقن قواعد البيانات).
-• /simulate [سيناريو] - محاكاة سيناريوهات برمجية والتنبؤ بالتبعات والمخاطر.
-• /oracle [مكتبة] - فحص الاعتماديات وإصداراتها والبدائل الأفضل.
-• /health - قياس "صحة وتوتر الكود" (تفرعات معقدة، ملفات طويلة، كود ميت).
-
-⚙️ <b>التشغيل والترجمة والأتمتة:</b>
-• /dockerize - توليد فوري لملفات Dockerfile و docker-compose مخصصة.
-• /pipeline - توليد ملفات أتمتة اختبارات GitHub Actions (CI/CD).
-• /harden - توليد تعديلات وحمايات برمجية فورية (CORS, RateLimit, Headers).
-• /profile - فحص كفاءة الكود واقتراح حلول لمشاكل الأداء والـ SQL.
-• /i18n - فحص الكود، استخراج النصوص الصلبة وترجمتها تلقائياً.
-• /graph - عرض شجرة العلاقات والاعتماديات بين ملفات مشروعك.
-• /story - قراءة الـ git diff وتحويل التغييرات لقصة بطولية ممتعة.
-• /team_session - إدارة جلسات العمل الجماعية وتجنب تعارض الملفات.
-• /lock [ملف] - قفل ملف لتجنب التعديل عليه من قبل زميل بالخطأ.
-• /unlock [ملف] - إلغاء قفل الملف.
-
-🧬 <b>التحسين التلقائي والتطور:</b>
-• /evolve - ترقية كود قديم لنمط حديث بالكامل.
-• /migrate - التخطيط لترحيل مشروعك من إطار عمل لآخر.
-• /chaos - تشغيل اختبارات فوضى وتوليد سيناريوهات الأعطال المفاجئة.
-• /deploy - خطة ودليل النشر بدون توقف (Zero-Downtime).
-• /os - تشغيل لوحة التحكم التفاعلية الشاملة لـ OmniMind OS.
-`;
+💫 <i>تمتع بتجربة مذهلة تجمع بين قوة الوكلاء والمرح البرمجي الفائق!</i>`;
     ctx.reply(helpMsg, { parse_mode: 'HTML' });
 });
 
-bot.command('start', async (ctx) => {
-    await botDb.ensureUser(ctx.from.id, ctx.from.username);
-    ctx.reply(`🌌 مرحبًا بك في *OmniMind OS* - رفيق دربك التطويري الأسطوري!\n\nاستخدم /help لعرض قائمة الميزات الـ 300 المدمجة، أو اكتب /os لفتح لوحة التحكم الذكية التفاعلية.`, { parse_mode: 'Markdown' });
-});
-
-// --- TELEGRAM MINI APPS & DASHBOARD INTEGRATION ---
-bot.command('dashboard', async (ctx) => {
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp("📊 فتح لوحة التحكم", `https://omnimind-bot-dashboard.vercel.app/?user_id=${ctx.from!.id}`)]
-    ]);
-    await ctx.reply(
-        "🚀 *مرحباً بك في لوحة تحكم OmniMind!*\n\n" +
-        "اضغط على الزر أدناه لفتح لوحة التحكم الذكية مباشرة كـ Telegram Mini App لربط الواجهة بالبوت وعرض بياناتك الحية:",
-        { parse_mode: 'Markdown', ...keyboard }
-    );
-});
-
-bot.command('files', async (ctx) => {
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp("📁 عرض الملفات", `https://omnimind-bot-dashboard.vercel.app/files?user_id=${ctx.from!.id}`)]
-    ]);
-    await ctx.reply("📁 *افتح مستعرض الملفات التفاعلي:*", { parse_mode: 'Markdown', ...keyboard });
-});
-
-bot.command('agents', async (ctx) => {
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp("🤖 إدارة الوكلاء", `https://omnimind-bot-dashboard.vercel.app/agents?user_id=${ctx.from!.id}`)]
-    ]);
-    await ctx.reply("🤖 *افتح لوحة الوكلاء والشخصيات التفاعلية:*", { parse_mode: 'Markdown', ...keyboard });
-});
-
-bot.command('stars', async (ctx) => {
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.webApp("⭐ متجر النجوم والـ RPG", `https://omnimind-bot-dashboard.vercel.app/stars?user_id=${ctx.from!.id}`)]
-    ]);
-    await ctx.reply("⭐ *افتح متجر نجوم التطوير ونقاط الخبرة:*", { parse_mode: 'Markdown', ...keyboard });
-});
-
-// RPG Dashboard Command
-bot.command('rpg', async (ctx) => {
-    try {
-        const rpg = await botDb.getRPG(ctx.from.id);
-        const nextXpRequired = (rpg.level || 1) * 100;
-        const xpPercent = Math.min(100, Math.floor(((rpg.xp || 0) / nextXpRequired) * 100));
-        
-        // Draw elegant retro ASCII progress bar
-        const totalBars = 10;
-        const filledBars = Math.floor(xpPercent / 10);
-        const emptyBars = totalBars - filledBars;
-        const progressBar = `[${'█'.repeat(filledBars)}${'░'.repeat(emptyBars)}] ${xpPercent}%`;
-
-        const rpgMsg = `
-🏆 *OmniMind Dev RPG Dashboard*
-👤 *المطور:* ${ctx.from.first_name} (@${ctx.from.username || 'unknown'})
-🎖️ *اللقب الحالي:* ${rpg.title}
-⭐ *المستوى:* ${rpg.level}
-📈 *الخبرة (XP):* ${rpg.xp} / ${nextXpRequired} XP
-${progressBar}
-
-📝 *المهام المكتملة:* ${rpg.tasks_completed} مهمة ناجحة!
-✨ *استمر في التطوير وحل المشاكل لكسب المزيد من الـ XP والارتقاء في الألقاب المعمارية الأسطورية!*
-`;
-        ctx.reply(rpgMsg, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ حدث خطأ أثناء عرض لوحة الـ RPG: ${error.message}`);
-    }
-});
-
-// Persona selector
-bot.command('persona', async (ctx) => {
-    const text = ctx.message.text.replace('/persona', '').trim().toLowerCase();
-    
-    if (!text) {
-        const currentPrefs = await botDb.getPreferences(ctx.from.id);
-        const currentPersona = currentPrefs?.selected_persona || 'normal';
-        return ctx.reply(`🎭 *الشخصية الحالية:* \`${currentPersona}\`\n\nتغيير الشخصية:\n• \`/persona normal\` - طبيعي محترف\n• \`/persona duck\` - البطة المطاطية السقراطية 🦆\n• \`/persona devil\` - محامي الشيطان المشاكس 😈\n• \`/persona eli5\` - مبسط الكود للأطفال 🧸\n• \`/persona roast\` - شوي الكود الكوميدي 🔥`, { parse_mode: 'Markdown' });
-    }
-
-    const validPersonas = ['normal', 'duck', 'devil', 'eli5', 'roast'];
-    if (!validPersonas.includes(text)) {
-        return ctx.reply('⚠️ شخصية غير معروفة. الرجاء الاختيار من: normal, duck, devil, eli5, roast');
-    }
-
-    try {
-        await botDb.setPersona(ctx.from.id, text);
-        const names: Record<string, string> = {
-            normal: "الوكيل الطبيعي المحترف 🤖",
-            duck: "البطة المطاطية السقراطية 🦆",
-            devil: "محامي الشيطان المشاكس 😈",
-            eli5: "مبسط الكود الرائع 🧸",
-            roast: "شواية الكود الكوميدية 🔥"
-        };
-        ctx.reply(`✅ تم تفعيل *${names[text]}* بنجاح! جميع المهام والردود القادمة ستتبع هذا النمط الأسطوري.`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل تغيير الشخصية: ${error.message}`);
-    }
-});
-
-// Credentials Setup
-bot.command('addkey', async (ctx) => {
-    const parts = ctx.message.text.replace('/addkey', '').trim().split(/\s+/);
-    const provider = parts[0]?.toLowerCase();
-    const key = parts[1];
-
-    if (!provider || !key) {
-        return ctx.reply('⚠️ صيغة خاطئة. الاستخدام الصحيح:\n`/addkey [openai|gemini|github_token] [المفتاح]`', { parse_mode: 'Markdown' });
-    }
-
-    try {
-        const encrypted = encrypt(key, ctx.from.id);
-        await botDb.addCredential(ctx.from.id, provider, encrypted);
-        ctx.reply(`✅ تم تشفير وحفظ مفتاح *${provider}* بأمان كامل في الخزنة الرقمية للمطور!`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل حفظ المفتاح: ${error.message}`);
-    }
-});
-
-// Token Pool Setup
-bot.command('addpool', async (ctx) => {
-    const parts = ctx.message.text.replace('/addpool', '').trim().split(/\s+/);
-    const provider = parts[0]?.toLowerCase();
-    const key = parts[1];
-
-    if (!provider || !key) {
-        return ctx.reply('⚠️ صيغة خاطئة. الاستخدام الصحيح:\n`/addpool [openai|gemini] [المفتاح]`', { parse_mode: 'Markdown' });
-    }
-
-    try {
-        const encrypted = encrypt(key, ctx.from.id);
-        await botDb.addPoolToken(ctx.from.id, provider, encrypted);
-        ctx.reply(`✅ تم إضافة المفتاح بنجاح إلى *حوض التدوير التلقائي (Token Pool)* لـ *${provider}*! سيتم استخدامه بالتناوب لتجنب Rate Limits.`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل تسجيل مفتاح التدوير: ${error.message}`);
-    }
-});
-
-// Cost Dashboard
-bot.command('cost', async (ctx) => {
-    try {
-        const costs = await botDb.getCosts(ctx.from.id);
-        
-        let breakdownText = "";
-        if (costs.breakdown.length === 0) {
-            breakdownText = "• لا توجد طلبات مسجلة حتى الآن.";
-        } else {
-            costs.breakdown.forEach((row: any) => {
-                breakdownText += `• *${row.model}:* ${row.request_count} طلبات | ${row.total_tokens} توكن | \$${row.total_cost.toFixed(6)}\n`;
-            });
-        }
-
-        const costMsg = `
-📊 *OmniMind Live Cost Dashboard*
-👤 *المستخدم:* ${ctx.from.first_name}
-
-📈 *تفاصيل النماذج المستهلكة:*
-${breakdownText}
-
-🪙 *إجمالي التوكنز المستهلكة:* ${costs.totalTokens} Tokens
-💵 *إجمالي التكلفة التقديرية:* \$${costs.totalCost.toFixed(6)} USD
-
-🔄 *نظام التوفير التلقائي (Smart Routing) مفعل لتوجيه المهام البسيطة للنماذج الاقتصادية تلقائيًا.*
-`;
-        const keyboard = Markup.inlineKeyboard([
-            [Markup.button.webApp("📊 فتح لوحة التكلفة التفاعلية", `https://omnimind-bot-dashboard.vercel.app/cost?user_id=${ctx.from!.id}`)]
-        ]);
-        ctx.reply(costMsg, { parse_mode: 'Markdown', ...keyboard });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل جلب لوحة التكلفة: ${error.message}`);
-    }
-});
-
-// Projects Management
-bot.command('projects', async (ctx) => {
-    const text = ctx.message.text.replace('/projects', '').trim();
-    if (!text) {
-        const active = await botDb.getActiveProject(ctx.from.id);
-        return ctx.reply(`📁 <b>إدارة المشاريع</b>\n\n• المشروع الحالي النشط: <code>${active ? active.name : "لا يوجد مشروع نشط"}</code>\n• مسار المجلد: <code>${active ? active.project_path : "غير محدد"}</code>\n\nلإضافة أو تفعيل مشروع جديد:\n<code>/projects [اسم المشروع] [مسار المجلد]</code>\n\nمثال:\n<code>/projects MyWebSite /app/applet</code>`, { parse_mode: 'HTML' });
-    }
-
-    const parts = text.split(/\s+/);
-    const name = parts[0];
-    if (!name) {
-        return ctx.reply('⚠️ يرجى كتابة اسم المشروع.');
-    }
-    const folderPath = parts[1] || process.cwd();
-
-    try {
-        await botDb.createProject(ctx.from.id, name, folderPath);
-        ctx.reply(`✅ تم تفعيل وإنشاء المشروع *${name}* في المسار \`${folderPath}\` كالمشروع الافتراضي لعمليات البوت والأدوات!`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ حدث خطأ أثناء إعداد المشروع: ${error.message}`);
-    }
-});
-
-// File Locking System
-bot.command('lock', async (ctx) => {
-    const filePath = ctx.message.text.replace('/lock', '').trim();
-    if (!filePath) {
-        return ctx.reply('⚠️ يرجى تحديد مسار الملف لقفله. مثال: `/lock src/index.ts`');
-    }
-
-    try {
-        const activeProject = await botDb.getActiveProject(ctx.from.id);
-        if (!activeProject) {
-            return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً باستخدام أمر `/projects`.');
-        }
-
-        const success = await botDb.lockFile(activeProject.id, filePath, ctx.from.id);
-        if (success) {
-            ctx.reply(`🔒 تم قفل الملف \`${filePath}\` لك بنجاح! لن يستطيع أحد التعديل عليه في جلسة الفريق حتى تفتحه.`, { parse_mode: 'Markdown' });
-        } else {
-            const currentLock = await botDb.getFileLock(activeProject.id, filePath);
-            ctx.reply(`⚠️ هذا الملف مقفل حاليًا بواسطة زميل آخر (ID: ${currentLock?.locked_by}). يرجى التواصل معه أولاً.`);
-        }
-    } catch (error: any) {
-        ctx.reply(`❌ فشل قفل الملف: ${error.message}`);
-    }
-});
-
-bot.command('unlock', async (ctx) => {
-    const filePath = ctx.message.text.replace('/unlock', '').trim();
-    if (!filePath) {
-        return ctx.reply('⚠️ يرجى تحديد مسار الملف لإلغاء القفل. مثال: `/unlock src/index.ts`');
-    }
-
-    try {
-        const activeProject = await botDb.getActiveProject(ctx.from.id);
-        if (!activeProject) {
-            return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً.');
-        }
-
-        const currentLock = await botDb.getFileLock(activeProject.id, filePath);
-        if (!currentLock) {
-            return ctx.reply('⚠️ الملف ليس مقفلاً أصلاً.');
-        }
-
-        if (currentLock.locked_by !== ctx.from.id) {
-            return ctx.reply('⚠️ لا تملك صلاحية لفتح هذا الملف لأنه مقفل من زميل آخر.');
-        }
-
-        await botDb.unlockFile(activeProject.id, filePath);
-        ctx.reply(`🔓 تم فتح قفل الملف \`${filePath}\` وأصبح متاحًا للجميع للتعديل!`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل فتح الملف: ${error.message}`);
-    }
-});
-
-// Team Session
-bot.command('team_session', async (ctx) => {
-    try {
-        const activeProject = await botDb.getActiveProject(ctx.from.id);
-        if (!activeProject) {
-            return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً لتنظيم جلسة عمل الفريق.');
-        }
-        
-        ctx.reply(`👥 *جلسة عمل الفريق النشطة للمشروع:* \`${activeProject.name}\`\n\n- نظام الحماية ضد تصادم التعديلات مفعل تلقائيًا.\n- استخدم \`/lock [مسار_الملف]\` للعمل على ملف بشكل مستقل.\n- استخدم \`/unlock [مسار_الملف]\` لإلغاء القفل.\n\n_أنت وفريقك متصلون الآن بنفس بيئة التطوير والوكلاء!_`, { parse_mode: 'Markdown' });
-    } catch (error: any) {
-        ctx.reply(`❌ فشل تهيئة جلسة الفريق: ${error.message}`);
-    }
-});
-
-// Dynamic Task Runner (Primary Agent Swarm execution)
 bot.command('task', async (ctx) => {
     const text = ctx.message.text.replace('/task', '').trim();
     if (!text) {
@@ -1419,134 +1131,18 @@ bot.action(/^runcmd_(\w+)$/, async (ctx) => {
 ⚡ <b>إدارة التوكنات والتكلفة:</b>
 • /addkey [openai|gemini|github_token] [مفتاح] - إضافة مفاتيحك الخاصة مشفرة.
 • /addpool [openai|gemini] [مفتاح] - إضافة توكنات لحوض التدوير التلقائي لتجنب حد الاستهلاك.
-• /cost - لوحة التكلفة الحية (إحصائيات استهلاك التوكنات والـ USD).
+• /cost - لوحة التكلفة الحية (إحصائيات استهلاك التوكنات).
+• /projects - إدارة مشاريع التطوير والمسارات المشتركة.
+• /lock - حماية الملفات من التعديل المشترك.
+• /team - جلسة فريق العمل الموحد.
 
-🏗️ <b>أدوات التطوير المعمقة والمشاريع:</b>
-• /blueprint [فكرة] - كتابة مخطط معماري متكامل (5 مراحل).
-• /build_api [اسم] - توليد كامل لـ API.
-• /build_bot [اسم] - توليد بوت تيليغرام Node-Telegraf متكامل.
-• /adr [قرار] - كتابة وتوثيق قرار معماري (ADR).
-• /multiphase [هدف] - تقسيم هدف ضخم وتجربته عبر نقاط تفتيش آلية.
-• /dna - تحليل عميق لمكونات الكود ومستوى الأمان والثغرات.
-
-🥷 <b>أدوات الحماية والتنقيب:</b>
-• /redteam - فحص أمني تفصيلي للملفات.
-• /simulate [سيناريو] - محاكاة سيناريوهات برمجية والتنبؤ بالتبعات والمخاطر.
-• /oracle [مكتبة] - فحص الاعتماديات وإصداراتها والبدائل الأفضل.
-• /health - قياس "صحة وتوتر الكود".
-
-⚙️ <b>التشغيل والترجمة والأتمتة:</b>
-• /dockerize - توليد فوري لملفات Dockerfile و docker-compose مخصصة.
-• /pipeline - توليد ملفات أتمتة اختبارات GitHub Actions (CI/CD).
-• /harden - توليد تعديلات وحمايات برمجية فورية.
-• /profile - فحص كفاءة الكود واقتراح حلول لمشاكل الأداء والـ SQL.
-• /i18n - فحص الكود، استخراج النصوص الصلبة وترجمتها تلقائياً.
-• /graph - عرض شجرة العلاقات والاعتماديات بين ملفات مشروعك.
-• /team_session - إدارة جلسات العمل الجماعية وتجنب تعارض الملفات.
-• /lock [ملف] - قفل ملف لتجنب التعديل عليه من قبل زميل بالخطأ.
-• /unlock [ملف] - إلغاء قفل الملف.
-
-🧬 <b>التحسين التلقائي والتطور:</b>
-• /evolve - ترقية كود قديم لنمط حديث بالكامل.
-• /migrate - التخطيط لترحيل مشروعك من إطار عمل لآخر.
-• /chaos - تشغيل اختبارات فوضى وتوليد سيناريوهات الأعطال المفاجئة.
-• /deploy - خطة ودليل النشر بدون توقف (Zero-Downtime).
-• /os - تشغيل لوحة التحكم التفاعلية الشاملة لـ OmniMind OS.
-`;
+💫 <i>تمتع بتجربة مذهلة تجمع بين قوة الوكلاء والمرح البرمجي الفائق!</i>`;
         ctx.reply(helpMsg, { parse_mode: 'HTML' });
-    } else if (cmd === 'rpg') {
-        try {
-            const rpg = await botDb.getRPG(ctx.from!.id);
-            const nextXpRequired = (rpg.level || 1) * 100;
-            const xpPercent = Math.min(100, Math.floor(((rpg.xp || 0) / nextXpRequired) * 100));
-            const totalBars = 10;
-            const filledBars = Math.floor(xpPercent / 10);
-            const emptyBars = totalBars - filledBars;
-            const progressBar = `[${'█'.repeat(filledBars)}${'░'.repeat(emptyBars)}] ${xpPercent}%`;
-
-            const rpgMsg = `
-🏆 *OmniMind Dev RPG Dashboard*
-👤 *المطور:* ${ctx.from!.first_name} (@${ctx.from!.username || 'unknown'})
-🎖️ *اللقب الحالي:* ${rpg.title}
-⭐ *المستوى:* ${rpg.level}
-📈 *الخبرة (XP):* ${rpg.xp} / ${nextXpRequired} XP
-${progressBar}
-
-📝 *المهام المكتملة:* ${rpg.tasks_completed} مهمة ناجحة!
-✨ *استمر في التطوير وحل المشاكل لكسب المزيد من الـ XP والارتقاء في الألقاب المعمارية الأسطورية!*
-`;
-            ctx.reply(rpgMsg, { parse_mode: 'Markdown' });
-        } catch (error: any) {
-            ctx.reply(`❌ حدث خطأ أثناء عرض لوحة الـ RPG: ${error.message}`);
-        }
-    } else if (cmd === 'os') {
-        const rpg = await botDb.getRPG(ctx.from!.id);
-        const osMsg = `
-🌌 *لوحة التحكم OmniMind OS - نظام مصفوفي نشط*
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-👤 *المطور:* ${ctx.from!.first_name}
-⭐ *المستوى:* ${rpg.level} | *اللقب:* ${rpg.title}
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-الرجاء استخدام قائمة الأزرار التفاعلية البرمجية بالأسفل لتشغيل وتنفيذ الميزات فورياً وبدون كتابة أوامر معقدة:
-`;
-        const keyboard = Markup.inlineKeyboard([
-            [
-                Markup.button.callback('🏆 RPG Dashboard', 'os_rpg'),
-                Markup.button.callback('📊 Live Costs', 'os_costs')
-            ],
-            [
-                Markup.button.callback('🗺️ App Blueprint', 'os_blueprint'),
-                Markup.button.callback('🥷 Security Audit', 'os_redteam')
-            ],
-            [
-                Markup.button.callback('🐳 Dockerize App', 'os_docker'),
-                Markup.button.callback('💻 Swarm Swarm', 'os_matrix')
-            ],
-            [
-                Markup.button.callback('☕ Quick Break', 'os_break'),
-                Markup.button.callback('🎭 Change Persona', 'os_persona')
-            ],
-            [
-                Markup.button.callback('🌟 300 Superpowers 🌟', 'os_300_powers')
-            ],
-            [
-                Markup.button.callback('📜 All Commands | كل الأوامر 📜', 'os_commands')
-            ]
-        ]);
-        ctx.reply(osMsg, { parse_mode: 'Markdown', ...keyboard });
-    } else if (cmd === 'matrix') {
-        const matrixText = `
-💻 *OmniMind Matrix OS Live View*
-🤖 *حالة خلية الوكلاء المعرفية:*
-
-\`\`\`
-10101101  [CRITIC AGENT]  -> ACTIVE 🟢 (Analyzing code smells)
-01100010  [CODER AGENT]   -> STANDBY 🟡 (Waiting for instruction)
-11101011  [TESTER AGENT]  -> ACTIVE 🟢 (Executing continuous mocha checks)
-00101101  [SECURITY AGENT]-> SLEEPING 💤 (Audit complete)
-
-  ▲
- / \\   SWARM SYNCING... 100%
-/___\\  PORT: 3000
-\`\`\`
-
-_تم توليد تمثيل مرئي مصفوفي ناجح لشبكة الوكلاء الحالية._
-`;
-        ctx.reply(matrixText, { parse_mode: 'Markdown' });
-    } else if (cmd === 'break') {
-        ctx.reply(`☕ *حان وقت استراحة القهوة الذكية (3 ساعات)!*
-البوت سيتولى الآن فحص البيئة بالخلفية للتأكد من عدم تعطل أي من الاختبارات...
-
-⏳ *مؤقت الاستراحة بدأ الآن.* خذ قسطاً من الراحة لزيادة ذكائك وتركيزك البرمجي!`);
-    } else if (cmd === 'projects') {
-        const active = await botDb.getActiveProject(ctx.from!.id);
-        ctx.reply(`📁 <b>إدارة المشاريع</b>\n\n• المشروع الحالي النشط: <code>${active ? active.name : "لا يوجد مشروع نشط"}</code>\n• مسار المجلد: <code>${active ? active.project_path : "غير محدد"}</code>\n\nلإضافة أو تفعيل مشروع جديد:\n<code>/projects [اسم المشروع] [مسار المجلد]</code>\n\nمثال:\n<code>/projects MyWebSite /app/applet</code>`, { parse_mode: 'HTML' });
     } else if (cmd === 'team_session') {
         try {
             const activeProject = await botDb.getActiveProject(ctx.from!.id);
             if (!activeProject) {
-                return ctx.reply('⚠️ يرجى تفعيل مشروع أولاً لتنظيم جلسة عمل الفريق.');
+                return ctx.reply('⚠️ لا يوجد مشروع نشط حالياً. يرجى تفعيل مشروع أولاً باستخدام أمر /projects.');
             }
             ctx.reply(`👥 *جلسة عمل الفريق النشطة للمشروع:* \`${activeProject.name}\`\n\n- نظام الحماية ضد تصادم التعديلات مفعل تلقائيًا.\n- استخدم \`/lock [مسار_الملف]\` للعمل على ملف بشكل مستقل.\n- استخدم \`/unlock [مسار_الملف]\` لإلغاء القفل.\n\n_أنت وفريقك متصلون الآن بنفس بيئة التطوير والوكلاء!_`, { parse_mode: 'Markdown' });
         } catch (error: any) {
@@ -1684,162 +1280,205 @@ function getFilesRecursively(dir: string, baseDir: string = dir, maxFiles: numbe
     return results.slice(0, maxFiles);
 }
 
+function buildFileTree(dir: string, baseDir: string = dir): any[] {
+    try {
+        const list = fs.readdirSync(dir);
+        const nodes: any[] = [];
+        for (const file of list) {
+            if (file === 'node_modules' || file === '.git' || file === 'dist' || file === '.next' || file === '.cache') continue;
+            const filePath = path.join(dir, file);
+            const relPath = path.relative(baseDir, filePath).replace(/\\/g, '/');
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+                const children = buildFileTree(filePath, baseDir);
+                nodes.push({
+                    path: relPath + '/',
+                    type: 'folder',
+                    children
+                });
+            } else {
+                nodes.push({
+                    path: relPath,
+                    type: 'file',
+                    size: stat.size
+                });
+            }
+        }
+        return nodes.sort((a, b) => {
+            if (a.type !== b.type) {
+                return a.type === 'folder' ? -1 : 1;
+            }
+            return a.path.localeCompare(b.path);
+        });
+    } catch (e) {
+        return [];
+    }
+}
+
 async function main() {
     console.log("🚀 جاري تهيئة قاعدة بيانات OmniMind OS...");
     await botDb.init();
     
     // Web health check and REST API server listening on port 3000
-    const server = http.createServer(async (req, res) => {
-        // Enable CORS for frontend integration
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    const app = new Hono();
 
-        if (req.method === 'OPTIONS') {
-            res.writeHead(204);
-            res.end();
-            return;
-        }
+    app.use('/*', cors({
+        origin: '*',
+        allowMethods: ['GET', 'POST', 'OPTIONS'],
+        allowHeaders: ['Content-Type', 'Authorization']
+    }));
 
-        const parsedUrl = new URL(req.url || '', `http://${req.headers?.host || 'localhost'}`);
-        const pathname = parsedUrl.pathname;
-        const userIdStr = parsedUrl.searchParams.get('user_id');
+    app.get('/api/dashboard', async (c) => {
+        const userIdStr = c.req.query('user_id');
         const userId = userIdStr ? parseInt(userIdStr, 10) : 1;
-
         try {
-            if (pathname === '/api/dashboard') {
-                const rpg = await botDb.getRPG(userId);
-                const activeProject = await botDb.getActiveProject(userId);
-                const costs = await botDb.getCosts(userId);
-                const preferences = await botDb.getPreferences(userId);
-                
-                let projectFilesCount = 0;
-                let projectName = "No Active Project";
-                if (activeProject) {
-                    projectName = activeProject.name;
-                    try {
-                        const projPath = activeProject.project_path || process.cwd();
-                        const files = getFilesRecursively(projPath);
-                        projectFilesCount = files.length;
-                    } catch (e) {}
-                } else {
-                    try {
-                        const files = getFilesRecursively(process.cwd());
-                        projectFilesCount = files.length;
-                    } catch (e) {}
+            const rpg = await botDb.getRPG(userId);
+            const activeProject = await botDb.getActiveProject(userId);
+            const costs = await botDb.getCosts(userId);
+            const preferences = await botDb.getPreferences(userId);
+            
+            let projectFilesCount = 0;
+            let projectName = "No Active Project";
+            if (activeProject) {
+                projectName = activeProject.name;
+                try {
+                    const projPath = activeProject.project_path || process.cwd();
+                    const files = getFilesRecursively(projPath);
+                    projectFilesCount = files.length;
+                } catch (e) {}
+            } else {
+                try {
+                    const files = getFilesRecursively(process.cwd());
+                    projectFilesCount = files.length;
+                } catch (e) {}
+            }
+
+            return c.json({
+                status: 'online',
+                user: {
+                    userId,
+                    rpg,
+                    preferences: preferences || { selected_persona: 'normal', selected_provider: 'gemini', selected_model: 'gemini-2.5-flash', language: 'ar' }
+                },
+                project: {
+                    name: projectName,
+                    filesCount: projectFilesCount,
+                    isActive: !!activeProject
+                },
+                stats: {
+                    totalCost: costs.totalCost,
+                    totalTokens: costs.totalTokens,
+                    breakdown: costs.breakdown
                 }
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    status: 'online',
-                    user: {
-                        userId,
-                        rpg,
-                        preferences: preferences || { selected_persona: 'normal', selected_provider: 'gemini', selected_model: 'gemini-2.5-flash', language: 'ar' }
-                    },
-                    project: {
-                        name: projectName,
-                        filesCount: projectFilesCount,
-                        isActive: !!activeProject
-                    },
-                    stats: {
-                        totalCost: costs.totalCost,
-                        totalTokens: costs.totalTokens,
-                        breakdown: costs.breakdown
-                    }
-                }));
-                return;
-            }
-
-            if (pathname === '/api/files') {
-                const activeProject = await botDb.getActiveProject(userId);
-                const projPath = activeProject ? (activeProject.project_path || process.cwd()) : process.cwd();
-                const files = getFilesRecursively(projPath);
-                
-                const fileList = files.map(f => {
-                    try {
-                        const stats = fs.statSync(path.join(projPath, f));
-                        return {
-                            path: f,
-                            size: stats.size,
-                            modified: stats.mtime
-                        };
-                    } catch (e) {
-                        return {
-                            path: f,
-                            size: 0,
-                            modified: new Date()
-                        };
-                    }
-                });
-
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    project_path: projPath,
-                    files: fileList
-                }));
-                return;
-            }
-
-            if (pathname === '/api/agents') {
-                const preferences = await botDb.getPreferences(userId);
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    active_persona: preferences?.selected_persona || "normal",
-                    provider: preferences?.selected_provider || "gemini",
-                    model: preferences?.selected_model || "gemini-2.5-flash",
-                    available_agents: [
-                        { id: "normal", name: "الوكيل الطبيعي المحترف 🤖", description: "يساعدك في كتابة الكود وحل المشاكل مباشرة" },
-                        { id: "duck", name: "البطة المطاطية السقراطية 🦆", description: "يرشدك عبر الأسئلة دون إعطائك الحل مباشرة" },
-                        { id: "devil", name: "محامي الشيطان المشاكس 😈", description: "يعترض على كودك ويظهر نقاط الضعف بقوة" },
-                        { id: "eli5", name: "مبسط الكود الرائع 🧸", description: "يشرح المفاهيم المعقدة بطريقة مبسطة للأطفال" },
-                        { id: "roast", name: "شواية الكود الكوميدية 🔥", description: "يسخر من كودك بأسلوب ممتع ولطيف" }
-                    ]
-                }));
-                return;
-            }
-
-            if (pathname === '/api/cost') {
-                const costs = await botDb.getCosts(userId);
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(costs));
-                return;
-            }
-
-            if (pathname === '/api/stars') {
-                const rpg = await botDb.getRPG(userId);
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                    level: rpg.level,
-                    xp: rpg.xp,
-                    title: rpg.title,
-                    tasks_completed: rpg.tasks_completed,
-                    coins: (rpg.level * 150) + rpg.xp,
-                    store_items: [
-                        { id: "gold_badge", name: "وسام المطور الذهبي", price: 500, description: "يظهر بجانب اسمك في البوت وفي لوحة التحكم" },
-                        { id: "ai_boost", name: "مسرع الذكاء الخارق", price: 1000, description: "زيادة حد الطلبات اليومي للضعف" },
-                        { id: "custom_theme", name: "ثيم لوحة التحكم الاحترافي", price: 1500, description: "يفتح ثيمات حصرية للوحة التحكم" }
-                    ]
-                }));
-                return;
-            }
-
-            // Default health status response
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                status: 'online', 
-                bot: 'OmniMind OS Node Bot', 
-                capabilities: '53+ Legendary Features & REST API Enabled' 
-            }));
+            });
         } catch (err: any) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: err.message }));
+            return c.json({ error: err.message }, 500);
         }
+    });
+
+    app.get('/api/files', async (c) => {
+        const userIdStr = c.req.query('user_id');
+        const userId = userIdStr ? parseInt(userIdStr, 10) : 1;
+        try {
+            const activeProject = await botDb.getActiveProject(userId);
+            const projPath = activeProject ? (activeProject.project_path || process.cwd()) : process.cwd();
+            const files = getFilesRecursively(projPath);
+            
+            const fileList = files.map(f => {
+                try {
+                    const stats = fs.statSync(path.join(projPath, f));
+                    return {
+                        path: f,
+                        size: stats.size,
+                        modified: stats.mtime
+                    };
+                } catch (e) {
+                    return {
+                        path: f,
+                        size: 0,
+                        modified: new Date()
+                    };
+                }
+            });
+
+            return c.json({
+                project_path: projPath,
+                files: fileList
+            });
+        } catch (err: any) {
+            return c.json({ error: err.message }, 500);
+        }
+    });
+
+    app.get('/api/agents', async (c) => {
+        const userIdStr = c.req.query('user_id');
+        const userId = userIdStr ? parseInt(userIdStr, 10) : 1;
+        try {
+            const preferences = await botDb.getPreferences(userId);
+            return c.json({
+                active_persona: preferences?.selected_persona || "normal",
+                provider: preferences?.selected_provider || "gemini",
+                model: preferences?.selected_model || "gemini-2.5-flash",
+                available_agents: [
+                    { id: "normal", name: "الوكيل الطبيعي المحترف 🤖", description: "يساعدك في كتابة الكود وحل المشاكل مباشرة" },
+                    { id: "duck", name: "البطة المطاطية السقراطية 🦆", description: "يرشدك عبر الأسئلة دون إعطائك الحل مباشرة" },
+                    { id: "devil", name: "محامي الشيطان المشاكس 😈", description: "يعترض على كودك ويظهر نقاط الضعف بقوة" },
+                    { id: "eli5", name: "مبسط الكود الرائع 🧸", description: "يشرح المفاهيم المعقدة بطريقة مبسطة للأطفال" },
+                    { id: "roast", name: "شواية الكود الكوميدية 🔥", description: "يسخر من كودك بأسلوب ممتع ولطيف" }
+                ]
+            });
+        } catch (err: any) {
+            return c.json({ error: err.message }, 500);
+        }
+    });
+
+    app.get('/api/cost', async (c) => {
+        const userIdStr = c.req.query('user_id');
+        const userId = userIdStr ? parseInt(userIdStr, 10) : 1;
+        try {
+            const costs = await botDb.getCosts(userId);
+            return c.json(costs);
+        } catch (err: any) {
+            return c.json({ error: err.message }, 500);
+        }
+    });
+
+    app.get('/api/stars', async (c) => {
+        const userIdStr = c.req.query('user_id');
+        const userId = userIdStr ? parseInt(userIdStr, 10) : 1;
+        try {
+            const rpg = await botDb.getRPG(userId);
+            return c.json({
+                level: rpg.level,
+                xp: rpg.xp,
+                title: rpg.title,
+                tasks_completed: rpg.tasks_completed,
+                coins: (rpg.level * 150) + rpg.xp,
+                store_items: [
+                    { id: "gold_badge", name: "وسام المطور الذهبي", price: 500, description: "يظهر بجانب اسمك في البوت وفي لوحة التحكم" },
+                    { id: "ai_boost", name: "مسرع الذكاء الخارق", price: 1000, description: "زيادة حد الطلبات اليومي للضعف" },
+                    { id: "custom_theme", name: "ثيم لوحة التحكم الاحترافي", price: 1500, description: "يفتح ثيمات حصرية للوحة التحكم" }
+                ]
+            });
+        } catch (err: any) {
+            return c.json({ error: err.message }, 500);
+        }
+    });
+
+    app.get('/', (c) => {
+        return c.json({
+            status: 'online', 
+            bot: 'OmniMind OS Node Bot', 
+            capabilities: '53+ Legendary Features & REST API Enabled'
+        });
     });
     
     const PORT = 3000;
-    server.listen(PORT, '0.0.0.0', () => {
-        console.log(`📡 Web health check server listening on 0.0.0.0:${PORT}`);
+    const serverInstance = serve({
+        fetch: app.fetch,
+        port: PORT
+    }, (info) => {
+        console.log(`📡 Hono Web server listening on http://0.0.0.0:${info.port}`);
     });
 
     console.log("🤖 جاري تشغيل بوت التليغرام الأسطوري...");
@@ -1849,11 +1488,11 @@ async function main() {
 
     process.once('SIGINT', () => {
         bot.stop('SIGINT');
-        server.close();
+        serverInstance.close();
     });
     process.once('SIGTERM', () => {
         bot.stop('SIGTERM');
-        server.close();
+        serverInstance.close();
     });
 }
 
