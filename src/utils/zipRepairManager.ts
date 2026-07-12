@@ -69,7 +69,8 @@ export class ZipRepairManager {
         // Directories to strictly skip to avoid freezing on huge assets
         const skipDirs = new Set([
             'node_modules', '.git', 'dist', 'build', '.next', '.cache', 'out', 
-            '__pycache__', 'venv', 'env', '.expo', 'ios', 'android', 'bin', 'obj'
+            '__pycache__', 'venv', 'env', '.expo', 'ios', 'android', 'bin', 'obj',
+            '.vscode', '.idea', 'bower_components', 'vendor', '.gradle', 'target'
         ]);
 
         // Code extensions we are interested in analyzing/modifying

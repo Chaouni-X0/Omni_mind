@@ -16,6 +16,8 @@ out/
 bot.db
 data/*.db
 data/temp_storage/
+data/temp_zip/
+data/repaired/
 
 # Python
 __pycache__/
