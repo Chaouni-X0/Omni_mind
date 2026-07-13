@@ -1731,8 +1731,19 @@ async function main() {
             const detectedBaseUrl = `${urlObj.protocol}//${urlObj.host}`;
             process.env.APP_URL = detectedBaseUrl;
 
-            // Dynamically register Telegram webhook if we detect a public APP_URL
-            if (!webhookRegistered && detectedBaseUrl && !detectedBaseUrl.includes('localhost') && !detectedBaseUrl.includes('127.0.0.1')) {
+            const isPrivateSandbox = detectedBaseUrl.includes('localhost') || 
+                                     detectedBaseUrl.includes('127.0.0.1') || 
+                                     detectedBaseUrl.includes('aistudio') || 
+                                     detectedBaseUrl.includes('google') || 
+                                     detectedBaseUrl.includes('workstation');
+
+            if (process.env.TELEGRAM_MODE === 'polling') {
+                await next();
+                return;
+            }
+
+            // Dynamically register Telegram webhook if we detect a public APP_URL and we are not forcing polling
+            if (!webhookRegistered && detectedBaseUrl && !isPrivateSandbox) {
                 webhookRegistered = true;
                 const webhookUrl = `${detectedBaseUrl}/api/telegram-webhook`;
                 console.log(`📡 Dynamically setting Telegram Webhook to: ${webhookUrl}`);
@@ -1935,10 +1946,38 @@ async function main() {
 
     const initialAppUrl = process.env.APP_URL;
     const isProduction = process.env.NODE_ENV === 'production' || !!process.env.K_SERVICE;
+    
     let useWebhook = isProduction;
 
-    if (initialAppUrl && !initialAppUrl.includes('localhost') && !initialAppUrl.includes('127.0.0.1')) {
+    const isPrivateUrl = (url?: string) => {
+        if (!url) return true;
+        const lower = url.toLowerCase();
+        return lower.includes('localhost') || 
+               lower.includes('127.0.0.1') || 
+               lower.includes('aistudio') || 
+               lower.includes('google') || 
+               lower.includes('workstation');
+    };
+
+    if (process.env.TELEGRAM_MODE === 'polling') {
+        useWebhook = false;
+        console.log("📡 Forced Polling mode via TELEGRAM_MODE env var.");
+    } else if (process.env.TELEGRAM_MODE === 'webhook') {
         useWebhook = true;
+        console.log("📡 Forced Webhook mode via TELEGRAM_MODE env var.");
+    } else if (isPrivateUrl(initialAppUrl)) {
+        if (initialAppUrl) {
+            console.log("📡 Private/Sandbox URL detected. Defaulting to POLLING mode to ensure Telegram updates work.");
+            useWebhook = false;
+        } else if (isProduction) {
+            console.log("📡 Running in Production/Cloud Run mode. Webhook will be registered dynamically upon the first HTTP request.");
+            useWebhook = true;
+        } else {
+            useWebhook = false;
+        }
+    }
+
+    if (useWebhook && initialAppUrl && !isPrivateUrl(initialAppUrl)) {
         webhookRegistered = true;
         const webhookUrl = `${initialAppUrl}/api/telegram-webhook`;
         console.log(`📡 Setting Telegram webhook on startup to: ${webhookUrl}`);
@@ -1948,8 +1987,6 @@ async function main() {
                 console.error('❌ Failed to set Telegram Webhook on startup:', err.message);
                 webhookRegistered = false;
             });
-    } else if (isProduction) {
-        console.log("📡 Running in Production/Cloud Run mode. Webhook will be registered dynamically upon the first HTTP request to prevent 409 Conflict.");
     }
 
     if (!useWebhook) {
